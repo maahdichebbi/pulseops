@@ -136,7 +136,23 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
-        </plugins>
+
+            <!--
+                Surefire: pre-load the Mockito byte-buddy agent before tests start.
+                Without this, Mockito's inline mock-maker tries to self-attach the
+                agent at runtime on JDK 21, which deadlocks on Windows.
+                -XX:+EnableDynamicAgentLoading suppresses the warning in the meantime.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>
+                        -XX:+EnableDynamicAgentLoading
+                        -javaagent:${settings.localRepository}/net/bytebuddy/byte-buddy-agent/${byte-buddy.version}/byte-buddy-agent-${byte-buddy.version}.jar
+                    </argLine>
+                </configuration>
+            </plugin>        </plugins>
     </build>
 
 </project>
