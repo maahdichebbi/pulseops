@@ -1,0 +1,24 @@
+# Excludes files from the Docker build context.
+# A smaller build context = faster docker build, less I/O.
+
+# Compiled output — the builder stage recompiles from source anyway
+target/
+
+# Git history — not needed in the image
+.git/
+.gitignore
+
+# IDE project files
+.idea/
+*.iml
+.vscode/
+
+# Local environment files — NEVER bake secrets into the image
+.env
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Test reports
+**/surefire-reports/

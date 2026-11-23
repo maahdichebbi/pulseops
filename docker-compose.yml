@@ -1,0 +1,53 @@
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: pulseops-postgres
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-pulseops}
+      POSTGRES_USER:     ${DB_USER:-pulseops}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-pulseops}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-pulseops} -d ${DB_NAME:-pulseops}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: pulseops-mailpit
+    ports:
+      - "1025:1025"   # SMTP
+      - "8026:8025"   # Web UI  →  http://localhost:8026  (8025 used by another project)
+    restart: unless-stopped
+
+  api:
+    build: .
+    container_name: pulseops-api
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST:     postgres
+      DB_PORT:     5432
+      DB_NAME:     ${DB_NAME:-pulseops}
+      DB_USER:     ${DB_USER:-pulseops}
+      DB_PASSWORD: ${DB_PASSWORD:-pulseops}
+      JWT_SECRET:  ${JWT_SECRET}
+      MAIL_HOST:   mailpit
+      MAIL_PORT:   1025
+    depends_on:
+      postgres:
+        condition: service_healthy   # waits until Postgres passes its healthcheck
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s             # give Spring Boot time to start before first check
+
+volumes:
+  postgres_data:

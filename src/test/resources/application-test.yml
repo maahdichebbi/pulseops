@@ -1,0 +1,19 @@
+# Test profile — overrides only what tests need.
+# Loaded automatically when tests use @SpringBootTest.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate   # Flyway still runs and owns the schema
+
+# A fixed JWT secret for tests — avoids needing a JWT_SECRET env var in CI.
+# 32+ bytes, test-only, never used in production.
+app:
+  jwt:
+    secret: test-secret-32-bytes-minimum-pad!
+    expiration-minutes: 60
+
+logging:
+  level:
+    com.pulseops: WARN       # Less noise in test output
+    org.flywaydb: WARN
+    org.testcontainers: WARN

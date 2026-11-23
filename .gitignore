@@ -1,0 +1,21 @@
+# Maven
+target/
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.DS_Store
+
+# Spring Boot
+*.jar
+*.war
+
+# Environment / secrets — never commit
+.env
+application-prod.yml
+application-production.yml
+
+# Docker volumes
+postgres_data/
