@@ -1,5 +1,6 @@
 package com.pulseops.monitor;
 
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -56,6 +57,11 @@ public class MonitorScheduler {
         this.checkResultRepository = checkResultRepository;
         this.executor              = executor;
         this.threadPool            = Executors.newFixedThreadPool(10);
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        threadPool.shutdownNow();
     }
 
     // ── Scheduler tick ────────────────────────────────────────────────────────

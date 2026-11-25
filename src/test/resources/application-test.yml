@@ -8,6 +8,8 @@ spring:
 # A fixed JWT secret for tests — avoids needing a JWT_SECRET env var in CI.
 # 32+ bytes, test-only, never used in production.
 app:
+  scheduling:
+    enabled: false
   jwt:
     secret: test-secret-32-bytes-minimum-pad!
     expiration-minutes: 60
