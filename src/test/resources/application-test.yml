@@ -10,6 +10,9 @@ spring:
 app:
   scheduling:
     enabled: false
+  rate-limit:
+    login:
+      enabled: false
   jwt:
     secret: test-secret-32-bytes-minimum-pad!
     expiration-minutes: 60
