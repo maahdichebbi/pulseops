@@ -1,5 +1,6 @@
 package com.pulseops.monitor;
 
+import com.pulseops.incident.IncidentService;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,16 +47,19 @@ public class MonitorScheduler {
     private final MonitorRepository      monitorRepository;
     private final CheckResultRepository  checkResultRepository;
     private final HttpCheckExecutor      executor;
+    private final IncidentService        incidentService;
 
     /** Bounded thread pool — prevents unbounded parallelism under load. */
     private final ExecutorService threadPool;
 
     public MonitorScheduler(MonitorRepository monitorRepository,
                             CheckResultRepository checkResultRepository,
-                            HttpCheckExecutor executor) {
+                            HttpCheckExecutor executor,
+                            IncidentService incidentService) {
         this.monitorRepository     = monitorRepository;
         this.checkResultRepository = checkResultRepository;
         this.executor              = executor;
+        this.incidentService       = incidentService;
         this.threadPool            = Executors.newFixedThreadPool(10);
     }
 
@@ -136,11 +140,13 @@ public class MonitorScheduler {
             monitor.setConsecutiveFailures(monitor.getConsecutiveFailures() + 1);
         }
 
-        // ── Phase 5 hook ─────────────────────────────────────────────────────
-        // TODO: incident detection will go here.
-        // if (shouldOpenIncident(monitor)) incidentService.openIncident(monitor);
-        // if (shouldCloseIncident(monitor)) incidentService.closeIncident(monitor);
-        // ─────────────────────────────────────────────────────────────────────
+        // ── Incident detection (never prevents lease release) ─────────────────
+        try {
+            incidentService.handleCheckResult(monitor, result);
+        } catch (Exception e) {
+            log.error("Incident handling failed for monitor {}: {}",
+                    monitor.getId(), e.getMessage(), e);
+        }
 
         // 3. Release the lease and schedule the next check
         monitor.setCheckStatus(Monitor.CheckStatus.IDLE);
