@@ -19,3 +19,7 @@ application-production.yml
 
 # Docker volumes
 postgres_data/
+
+# Frontend (Node / Vite)
+frontend/node_modules/
+frontend/dist/
