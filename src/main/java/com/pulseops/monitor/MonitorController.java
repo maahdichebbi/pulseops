@@ -118,4 +118,26 @@ public class MonitorController {
     public MonitorResponse resume(Authentication auth, @PathVariable Long id) {
         return monitorService.resume(id, userId(auth));
     }
+
+    /**
+     * GET /api/v1/monitors/{id}/results
+     * Paginated check history for a monitor (newest first).
+     */
+    @GetMapping("/{id}/results")
+    public Page<CheckResultResponse> getResults(
+            Authentication auth,
+            @PathVariable Long id,
+            @PageableDefault(size = 20) Pageable pageable) {
+
+        return monitorService.getResults(id, userId(auth), pageable);
+    }
+
+    /**
+     * GET /api/v1/monitors/{id}/uptime
+     * Uptime percentages and check counts for 24h, 7d, and 30d windows.
+     */
+    @GetMapping("/{id}/uptime")
+    public UptimeResponse getUptime(Authentication auth, @PathVariable Long id) {
+        return monitorService.getUptime(id, userId(auth));
+    }
 }

@@ -2,6 +2,7 @@ package com.pulseops.incident;
 
 import com.pulseops.monitor.CheckResult;
 import com.pulseops.monitor.Monitor;
+import com.pulseops.monitor.MonitorRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,13 +20,14 @@ import static org.mockito.Mockito.*;
 class IncidentServiceTest {
 
     @Mock private IncidentRepository incidentRepository;
+    @Mock private MonitorRepository monitorRepository;
     @Mock private NotificationService notificationService;
 
     private IncidentService incidentService;
 
     @BeforeEach
     void setUp() {
-        incidentService = new IncidentService(incidentRepository, notificationService);
+        incidentService = new IncidentService(incidentRepository, monitorRepository, notificationService);
     }
 
     private Monitor buildMonitor(int consecutiveFailures, int threshold) {

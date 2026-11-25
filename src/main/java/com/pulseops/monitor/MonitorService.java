@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 
 @Service
 @Transactional
@@ -16,11 +17,15 @@ public class MonitorService {
     static final int MAX_MONITORS_PER_USER = 20;
 
     private final MonitorRepository monitorRepository;
+    private final CheckResultRepository checkResultRepository;
     private final SsrfValidator ssrfValidator;
 
-    public MonitorService(MonitorRepository monitorRepository, SsrfValidator ssrfValidator) {
-        this.monitorRepository = monitorRepository;
-        this.ssrfValidator     = ssrfValidator;
+    public MonitorService(MonitorRepository monitorRepository,
+                          CheckResultRepository checkResultRepository,
+                          SsrfValidator ssrfValidator) {
+        this.monitorRepository     = monitorRepository;
+        this.checkResultRepository = checkResultRepository;
+        this.ssrfValidator         = ssrfValidator;
     }
 
     // ── Create ────────────────────────────────────────────────────────────────
@@ -55,6 +60,42 @@ public class MonitorService {
     @Transactional(readOnly = true)
     public MonitorResponse getById(Long id, Long userId) {
         return MonitorResponse.from(findOwned(id, userId));
+    }
+
+    /**
+     * Paginated check history for an owned monitor (newest first).
+     * Backed by idx_cr_monitor_checked.
+     */
+    @Transactional(readOnly = true)
+    public Page<CheckResultResponse> getResults(Long id, Long userId, Pageable pageable) {
+        findOwned(id, userId); // 404 if missing or not owned by caller
+        return checkResultRepository.findByMonitorIdOrderByCheckedAtDesc(id, pageable)
+                .map(CheckResultResponse::from);
+    }
+
+    /**
+     * Compute uptime % across 24h, 7d, and 30d windows for an owned monitor.
+     */
+    @Transactional(readOnly = true)
+    public UptimeResponse getUptime(Long id, Long userId) {
+        findOwned(id, userId); // 404 if missing or not owned by caller
+        Instant now = Instant.now();
+        return new UptimeResponse(
+                id,
+                computeWindow(id, now.minus(24, ChronoUnit.HOURS)),
+                computeWindow(id, now.minus(7, ChronoUnit.DAYS)),
+                computeWindow(id, now.minus(30, ChronoUnit.DAYS))
+        );
+    }
+
+    private UptimeResponse.WindowStats computeWindow(Long monitorId, Instant since) {
+        long total = checkResultRepository.countByMonitorIdAndCheckedAtAfter(monitorId, since);
+        if (total == 0) {
+            return UptimeResponse.WindowStats.of(0, 0);
+        }
+        long successful = checkResultRepository
+                .countByMonitorIdAndSuccessAndCheckedAtAfter(monitorId, true, since);
+        return UptimeResponse.WindowStats.of(total, successful);
     }
 
     // ── Update ────────────────────────────────────────────────────────────────

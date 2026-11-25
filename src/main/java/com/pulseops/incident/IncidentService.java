@@ -1,10 +1,14 @@
 package com.pulseops.incident;
 
+import com.pulseops.exception.ResourceNotFoundException;
 import com.pulseops.monitor.CheckResult;
 import com.pulseops.monitor.Monitor;
+import com.pulseops.monitor.MonitorRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,12 +28,39 @@ public class IncidentService {
     private static final Logger log = LoggerFactory.getLogger(IncidentService.class);
 
     private final IncidentRepository incidentRepository;
+    private final MonitorRepository monitorRepository;
     private final NotificationService notificationService;
 
     public IncidentService(IncidentRepository incidentRepository,
+                           MonitorRepository monitorRepository,
                            NotificationService notificationService) {
         this.incidentRepository  = incidentRepository;
+        this.monitorRepository   = monitorRepository;
         this.notificationService = notificationService;
+    }
+
+    // ── Read APIs (Phase 6) ───────────────────────────────────────────────────
+
+    /**
+     * Paginated incident history for a single monitor owned by userId.
+     * Returns 404 (not 403) if the monitor does not exist or belongs to someone else.
+     */
+    @Transactional(readOnly = true)
+    public Page<IncidentResponse> listForMonitor(Long monitorId, Long userId, Pageable pageable) {
+        monitorRepository.findByIdAndUserId(monitorId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Monitor not found"));
+        return incidentRepository.findByMonitorIdOrderByOpenedAtDesc(monitorId, pageable)
+                .map(IncidentResponse::from);
+    }
+
+    /**
+     * Paginated incident feed across all monitors owned by userId.
+     * Backed by idx_inc_user_opened.
+     */
+    @Transactional(readOnly = true)
+    public Page<IncidentResponse> listForUser(Long userId, Pageable pageable) {
+        return incidentRepository.findByUserIdOrderByOpenedAtDesc(userId, pageable)
+                .map(IncidentResponse::from);
     }
 
     /**
