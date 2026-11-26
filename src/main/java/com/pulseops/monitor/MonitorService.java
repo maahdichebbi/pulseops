@@ -7,8 +7,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.InetAddress;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 @Service
 @Transactional
@@ -19,13 +21,16 @@ public class MonitorService {
     private final MonitorRepository monitorRepository;
     private final CheckResultRepository checkResultRepository;
     private final SsrfValidator ssrfValidator;
+    private final GeoIpService geoIpService;
 
     public MonitorService(MonitorRepository monitorRepository,
                           CheckResultRepository checkResultRepository,
-                          SsrfValidator ssrfValidator) {
+                          SsrfValidator ssrfValidator,
+                          GeoIpService geoIpService) {
         this.monitorRepository     = monitorRepository;
         this.checkResultRepository = checkResultRepository;
         this.ssrfValidator         = ssrfValidator;
+        this.geoIpService          = geoIpService;
     }
 
     // ── Create ────────────────────────────────────────────────────────────────
@@ -36,15 +41,17 @@ public class MonitorService {
      * Order of checks (fail-fast, cheapest first):
      *   1. Quota (count query — no DNS I/O)
      *   2. SSRF validation (DNS resolution — network I/O)
-     *   3. Save
+     *   3. Best-effort GeoIP lookup (2s timeout, never fails create)
+     *   4. Save
      */
     public MonitorResponse create(Long userId, CreateMonitorRequest req) {
         enforceQuota(userId);
-        ssrfValidator.validate(req.url());   // throws SsrfException (422) if blocked
+        List<InetAddress> addresses = ssrfValidator.resolveAndValidate(req.url()); // throws SsrfException (422)
 
         Monitor monitor = new Monitor();
         monitor.setUserId(userId);
         applyRequest(monitor, req);
+        populateGeo(monitor, addresses);
 
         return MonitorResponse.from(monitorRepository.save(monitor));
     }
@@ -107,8 +114,9 @@ public class MonitorService {
      */
     public MonitorResponse update(Long id, Long userId, CreateMonitorRequest req) {
         Monitor monitor = findOwned(id, userId);
-        ssrfValidator.validate(req.url());
+        List<InetAddress> addresses = ssrfValidator.resolveAndValidate(req.url());
         applyRequest(monitor, req);
+        populateGeo(monitor, addresses);
         return MonitorResponse.from(monitorRepository.save(monitor));
     }
 
@@ -170,5 +178,25 @@ public class MonitorService {
         monitor.setIntervalMinutes(req.resolvedIntervalMinutes());
         monitor.setTimeoutSeconds(req.resolvedTimeoutSeconds());
         monitor.setFailureThreshold(req.resolvedFailureThreshold());
+    }
+
+    private void populateGeo(Monitor monitor, List<InetAddress> addresses) {
+        if (addresses.isEmpty()) return;
+        String ip = addresses.get(0).getHostAddress();
+        monitor.setTargetIp(ip);
+        geoIpService.lookup(ip).ifPresentOrElse(
+                geo -> {
+                    monitor.setGeoCountry(geo.country());
+                    monitor.setGeoCity(geo.city());
+                    monitor.setGeoLat(geo.lat());
+                    monitor.setGeoLon(geo.lon());
+                },
+                () -> {
+                    monitor.setGeoCountry(null);
+                    monitor.setGeoCity(null);
+                    monitor.setGeoLat(null);
+                    monitor.setGeoLon(null);
+                }
+        );
     }
 }

@@ -75,4 +75,38 @@ class HttpCheckExecutorTest {
         assertThat(result.getStatusCode()).isNull();
         assertThat(result.getErrorDetail()).contains("RuntimeException");
     }
+
+    /**
+     * Proves execute() completes a real HTTP GET without hitting restricted-header errors.
+     */
+    @Test
+    void execute_liveHttp200_returnsSuccessResult() throws Exception {
+        var server = com.sun.net.httpserver.HttpServer.create(
+                new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/health", exchange -> {
+            byte[] body = "OK".getBytes();
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            int port = server.getAddress().getPort();
+            when(ssrfValidator.resolveAndValidate(anyString()))
+                    .thenReturn(java.util.List.of(java.net.InetAddress.getByName("127.0.0.1")));
+
+            Monitor monitor = new Monitor();
+            monitor.setUrl("http://127.0.0.1:" + port + "/health");
+            monitor.setTimeoutSeconds(5);
+
+            CheckResult result = executor.execute(monitor);
+
+            assertThat(result.isSuccess()).isTrue();
+            assertThat(result.getStatusCode()).isEqualTo(200);
+            assertThat(result.getLatencyMs()).isNotNull();
+        } finally {
+            server.stop(0);
+        }
+    }
 }

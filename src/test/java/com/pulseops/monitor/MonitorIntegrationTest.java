@@ -182,7 +182,7 @@ class MonitorIntegrationTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(monitorBody("Internal", "http://127.0.0.1:8080/metrics")))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.error").value("Unprocessable Content"));
     }
 
@@ -194,7 +194,7 @@ class MonitorIntegrationTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(monitorBody("Internal", "http://192.168.1.1/admin")))
-                .andExpect(status().isUnprocessableEntity());
+                .andExpect(status().isUnprocessableContent());
     }
 
     @Test
@@ -205,7 +205,7 @@ class MonitorIntegrationTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(monitorBody("AWS Meta", "http://169.254.169.254/latest/meta-data/")))
-                .andExpect(status().isUnprocessableEntity());
+                .andExpect(status().isUnprocessableContent());
     }
 
     // ── GET list ──────────────────────────────────────────────────────────────
@@ -315,7 +315,7 @@ class MonitorIntegrationTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(monitorBody("Pwned", "http://10.0.0.1/secrets")))
-                .andExpect(status().isUnprocessableEntity());
+                .andExpect(status().isUnprocessableContent());
     }
 
     // ── DELETE ────────────────────────────────────────────────────────────────

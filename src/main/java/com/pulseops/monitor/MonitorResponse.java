@@ -21,6 +21,11 @@ public record MonitorResponse(
         Monitor.LastStatus lastStatus,    // null until first check
         Instant lastCheckedAt,            // null until first check
         Integer lastResponseMs,           // null until first check
+        String targetIp,
+        String geoCountry,
+        String geoCity,
+        Double geoLat,
+        Double geoLon,
         Instant createdAt,
         Instant updatedAt
 ) {
@@ -38,6 +43,11 @@ public record MonitorResponse(
                 m.getLastStatus(),
                 m.getLastCheckedAt(),
                 m.getLastResponseMs(),
+                m.getTargetIp(),
+                m.getGeoCountry(),
+                m.getGeoCity(),
+                m.getGeoLat(),
+                m.getGeoLon(),
                 m.getCreatedAt(),
                 m.getUpdatedAt()
         );

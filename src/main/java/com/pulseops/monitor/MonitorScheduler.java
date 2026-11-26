@@ -48,6 +48,8 @@ public class MonitorScheduler {
     private final CheckResultRepository  checkResultRepository;
     private final HttpCheckExecutor      executor;
     private final IncidentService        incidentService;
+    private final SsrfValidator          ssrfValidator;
+    private final GeoIpService           geoIpService;
 
     /** Bounded thread pool — prevents unbounded parallelism under load. */
     private final ExecutorService threadPool;
@@ -55,11 +57,15 @@ public class MonitorScheduler {
     public MonitorScheduler(MonitorRepository monitorRepository,
                             CheckResultRepository checkResultRepository,
                             HttpCheckExecutor executor,
-                            IncidentService incidentService) {
+                            IncidentService incidentService,
+                            SsrfValidator ssrfValidator,
+                            GeoIpService geoIpService) {
         this.monitorRepository     = monitorRepository;
         this.checkResultRepository = checkResultRepository;
         this.executor              = executor;
         this.incidentService       = incidentService;
+        this.ssrfValidator         = ssrfValidator;
+        this.geoIpService          = geoIpService;
         this.threadPool            = Executors.newFixedThreadPool(10);
     }
 
@@ -148,13 +154,35 @@ public class MonitorScheduler {
                     monitor.getId(), e.getMessage(), e);
         }
 
-        // 3. Release the lease and schedule the next check
+        // 3. Backfill GeoIP once for monitors created before V5
+        if (monitor.getTargetIp() == null) {
+            backfillGeoIfPossible(monitor);
+        }
+
+        // 4. Release the lease and schedule the next check
         monitor.setCheckStatus(Monitor.CheckStatus.IDLE);
         monitor.setClaimToken(null);
         monitor.setClaimedUntil(null);
         monitor.setNextCheckAt(Instant.now().plusSeconds(monitor.getIntervalMinutes() * 60L));
 
         monitorRepository.save(monitor);
+    }
+
+    private void backfillGeoIfPossible(Monitor monitor) {
+        try {
+            var addresses = ssrfValidator.resolveAndValidate(monitor.getUrl());
+            if (addresses.isEmpty()) return;
+            String ip = addresses.get(0).getHostAddress();
+            monitor.setTargetIp(ip);
+            geoIpService.lookup(ip).ifPresent(geo -> {
+                monitor.setGeoCountry(geo.country());
+                monitor.setGeoCity(geo.city());
+                monitor.setGeoLat(geo.lat());
+                monitor.setGeoLon(geo.lon());
+            });
+        } catch (Exception e) {
+            log.debug("GeoIP backfill skipped for monitor {}: {}", monitor.getId(), e.getMessage());
+        }
     }
 
     @Transactional

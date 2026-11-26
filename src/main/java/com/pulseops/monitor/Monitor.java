@@ -99,6 +99,23 @@ public class Monitor {
     @Column(name = "last_response_ms")
     private Integer lastResponseMs;
 
+    // ── Target GeoIP metadata (optional, populated on create/update) ────────
+
+    @Column(name = "target_ip", length = 45)
+    private String targetIp;
+
+    @Column(name = "geo_country", length = 100)
+    private String geoCountry;
+
+    @Column(name = "geo_city", length = 100)
+    private String geoCity;
+
+    @Column(name = "geo_lat")
+    private Double geoLat;
+
+    @Column(name = "geo_lon")
+    private Double geoLon;
+
     // ── Audit timestamps ──────────────────────────────────────────────────────
 
     @CreatedDate
@@ -137,6 +154,11 @@ public class Monitor {
     public LastStatus getLastStatus()   { return lastStatus; }
     public Instant getLastCheckedAt()   { return lastCheckedAt; }
     public Integer getLastResponseMs()  { return lastResponseMs; }
+    public String getTargetIp()         { return targetIp; }
+    public String getGeoCountry()       { return geoCountry; }
+    public String getGeoCity()          { return geoCity; }
+    public Double getGeoLat()           { return geoLat; }
+    public Double getGeoLon()           { return geoLon; }
     public Instant getCreatedAt()       { return createdAt; }
     public Instant getUpdatedAt()       { return updatedAt; }
 
@@ -157,4 +179,9 @@ public class Monitor {
     public void setLastStatus(LastStatus lastStatus)         { this.lastStatus = lastStatus; }
     public void setLastCheckedAt(Instant lastCheckedAt)      { this.lastCheckedAt = lastCheckedAt; }
     public void setLastResponseMs(Integer lastResponseMs)    { this.lastResponseMs = lastResponseMs; }
+    public void setTargetIp(String targetIp)                 { this.targetIp = targetIp; }
+    public void setGeoCountry(String geoCountry)             { this.geoCountry = geoCountry; }
+    public void setGeoCity(String geoCity)                   { this.geoCity = geoCity; }
+    public void setGeoLat(Double geoLat)                     { this.geoLat = geoLat; }
+    public void setGeoLon(Double geoLon)                     { this.geoLon = geoLon; }
 }

@@ -5,7 +5,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.net.InetAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -13,7 +12,6 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 /**
@@ -93,19 +91,15 @@ public class HttpCheckExecutor {
                         "Redirect loop detected at: " + currentUrl);
             }
 
-            // 1. SSRF-validate the URL and resolve the IP — do this BEFORE connecting
-            List<InetAddress> validatedAddresses = ssrfValidator.resolveAndValidate(currentUrl);
-            InetAddress targetIp = validatedAddresses.get(0);
+            // 1. SSRF-validate the URL and resolve its IPs — do this BEFORE connecting
+            ssrfValidator.resolveAndValidate(currentUrl);
 
-            // 2. Build a URI that connects to the validated IP directly (DNS-rebinding protection)
+            // 2. Build and send the request using the original URI so TLS SNI,
+            //    certificate hostname verification, and the Host header work natively.
             URI originalUri = URI.create(currentUrl);
-            URI safeUri = buildSafeUri(originalUri, targetIp);
-
-            // 3. Build and send the request
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(safeUri)
+                    .uri(originalUri)
                     .timeout(timeout)
-                    .header("Host", originalUri.getHost())   // keep original Host header
                     .header("User-Agent", "PulseOps-Monitor/1.0")
                     .GET()
                     .build();
@@ -145,27 +139,6 @@ public class HttpCheckExecutor {
 
         // Should not be reachable, but fail safe
         return CheckResult.failure(monitor.getId(), null, elapsed(start), "Exceeded redirect limit");
-    }
-
-    /**
-     * Replace the hostname in the URI with the validated IP address.
-     * This prevents the HTTP client from re-resolving the hostname at connect time
-     * (DNS-rebinding attack prevention per spec §2.9).
-     *
-     * The original Host header is added separately to satisfy virtual-host routing.
-     */
-    private URI buildSafeUri(URI original, InetAddress ip) {
-        String host = ip instanceof java.net.Inet6Address
-                ? "[" + ip.getHostAddress() + "]"   // IPv6 literals need brackets in URIs
-                : ip.getHostAddress();
-
-        int port = original.getPort();
-        String portPart = port == -1 ? "" : ":" + port;
-        String path = original.getRawPath();
-        String query = original.getRawQuery();
-        String queryPart = query == null ? "" : "?" + query;
-
-        return URI.create(original.getScheme() + "://" + host + portPart + path + queryPart);
     }
 
     private boolean isRedirect(int statusCode) {

@@ -50,6 +50,11 @@ export interface Monitor {
   lastStatus: LastStatus;
   lastCheckedAt: string | null;
   lastResponseMs: number | null;
+  targetIp: string | null;
+  geoCountry: string | null;
+  geoCity: string | null;
+  geoLat: number | null;
+  geoLon: number | null;
   createdAt: string;
   updatedAt: string;
 }

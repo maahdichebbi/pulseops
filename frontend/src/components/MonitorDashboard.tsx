@@ -1,20 +1,21 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ApiRequestError, monitorsApi } from '../api/client';
-import type { Monitor } from '../api/types';
+import type { CheckResult, Monitor } from '../api/types';
 
 interface MonitorDashboardProps {
   monitors: Monitor[];
-  selectedId: number | null;
+  recentByMonitor: Record<number, CheckResult[]>;
   onSelect: (id: number) => void;
   onRefresh: () => Promise<void>;
 }
 
 export function MonitorDashboard({
   monitors,
-  selectedId,
+  recentByMonitor,
   onSelect,
   onRefresh,
 }: MonitorDashboardProps) {
+  const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [intervalMinutes, setIntervalMinutes] = useState(5);
@@ -24,6 +25,25 @@ export function MonitorDashboard({
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<string[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Track previous statuses so only a real UP -> DOWN transition triggers the flip pulse
+  const prevStatusRef = useRef<Record<number, Monitor['lastStatus']>>({});
+  const [flippedDownIds, setFlippedDownIds] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    const nextFlipped: Record<number, boolean> = {};
+    for (const m of monitors) {
+      const prev = prevStatusRef.current[m.id];
+      if (prev === 'UP' && m.lastStatus === 'DOWN') {
+        nextFlipped[m.id] = true;
+      }
+      prevStatusRef.current[m.id] = m.lastStatus;
+    }
+    if (Object.keys(nextFlipped).length > 0) {
+      setFlippedDownIds(nextFlipped);
+    }
+  }, [monitors]);
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -41,13 +61,14 @@ export function MonitorDashboard({
       });
       setName('');
       setUrl('');
+      setShowCreate(false);
       await onRefresh();
     } catch (err) {
       if (err instanceof ApiRequestError) {
         setError(err.message);
         setFieldErrors(err.fieldErrors.map((f) => `${f.field}: ${f.message}`));
       } else {
-        setError('Failed to create monitor');
+        setError('Could not reach the PulseOps API to save this monitor.');
       }
     } finally {
       setSubmitting(false);
@@ -78,157 +99,247 @@ export function MonitorDashboard({
     }
   }
 
+  async function handleRefreshClick() {
+    setRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   function statusBadge(m: Monitor) {
-    if (!m.enabled) return <span className="badge badge-paused">PAUSED</span>;
-    if (m.lastStatus === 'UP') return <span className="badge badge-up">UP</span>;
-    if (m.lastStatus === 'DOWN') return <span className="badge badge-down">DOWN</span>;
-    return <span className="badge badge-pending">PENDING</span>;
+    if (!m.enabled) {
+      return (
+        <span className="badge badge-paused">
+          <span className="dot dot-paused" />
+          PAUSED
+        </span>
+      );
+    }
+    if (m.lastStatus === 'UP') {
+      return (
+        <span className="badge badge-up">
+          <span className="dot dot-up" />
+          UP
+        </span>
+      );
+    }
+    if (m.lastStatus === 'DOWN') {
+      return (
+        <span className={`badge badge-down ${flippedDownIds[m.id] ? 'badge-flip-down' : ''}`}>
+          <span className="dot dot-down" />
+          DOWN
+        </span>
+      );
+    }
+    return (
+      <span className="badge badge-degraded">
+        <span className="dot dot-degraded" />
+        PENDING
+      </span>
+    );
   }
 
   return (
-    <div className="stack-lg">
-      <section className="card">
-        <h2>Add Monitor</h2>
-        <form onSubmit={handleCreate} className="create-grid">
-          <label className="field">
-            <span>Name</span>
-            <input
-              type="text"
-              required
-              maxLength={100}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Prod API"
-            />
-          </label>
+    <>
+      {showCreate && (
+        <div className="modal-backdrop" onClick={() => setShowCreate(false)}>
+          <div className="modal-card stack" onClick={(e) => e.stopPropagation()}>
+            <div className="section-header" style={{ marginBottom: 0 }}>
+              <h2 style={{ margin: 0 }}>Add site to monitor</h2>
+              <button type="button" className="btn-ghost" onClick={() => setShowCreate(false)}>
+                Close
+              </button>
+            </div>
 
-          <label className="field field-wide">
-            <span>URL</span>
-            <input
-              type="url"
-              required
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://api.example.com/health"
-            />
-          </label>
+            <form onSubmit={handleCreate} className="stack">
+              <label className="field">
+                <span>Site name</span>
+                <input
+                  type="text"
+                  required
+                  maxLength={100}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="GitHub API"
+                />
+              </label>
 
-          <label className="field">
-            <span>Interval (min)</span>
-            <input
-              type="number"
-              min={1}
-              max={60}
-              value={intervalMinutes}
-              onChange={(e) => setIntervalMinutes(Number(e.target.value))}
-            />
-          </label>
+              <label className="field">
+                <span>HTTPS or HTTP URL</span>
+                <input
+                  type="url"
+                  required
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://api.github.com"
+                />
+              </label>
 
-          <label className="field">
-            <span>Timeout (sec)</span>
-            <input
-              type="number"
-              min={1}
-              max={30}
-              value={timeoutSeconds}
-              onChange={(e) => setTimeoutSeconds(Number(e.target.value))}
-            />
-          </label>
+              <div className="form-row-3">
+                <label className="field">
+                  <span>Interval (min)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={intervalMinutes}
+                    onChange={(e) => setIntervalMinutes(Number(e.target.value))}
+                  />
+                </label>
 
-          <label className="field">
-            <span>Failure Threshold</span>
-            <input
-              type="number"
-              min={1}
-              max={10}
-              value={failureThreshold}
-              onChange={(e) => setFailureThreshold(Number(e.target.value))}
-            />
-          </label>
+                <label className="field">
+                  <span>Timeout (sec)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={timeoutSeconds}
+                    onChange={(e) => setTimeoutSeconds(Number(e.target.value))}
+                  />
+                </label>
 
-          <div className="create-submit">
-            <button type="submit" className="btn-primary" disabled={submitting}>
-              {submitting ? 'Adding...' : 'Add Monitor'}
-            </button>
+                <label className="field">
+                  <span>Failure threshold</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={failureThreshold}
+                    onChange={(e) => setFailureThreshold(Number(e.target.value))}
+                  />
+                </label>
+              </div>
+
+              {error && (
+                <div className="alert-error">
+                  <div>{error}</div>
+                  {fieldErrors.map((fe) => (
+                    <div key={fe} className="field-err mono">{fe}</div>
+                  ))}
+                </div>
+              )}
+
+              <div className="modal-actions">
+                <button type="button" className="btn-ghost" onClick={() => setShowCreate(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary" disabled={submitting}>
+                  {submitting ? 'Saving...' : 'Start monitoring'}
+                </button>
+              </div>
+            </form>
           </div>
-        </form>
-
-        {error && (
-          <div className="alert-error" style={{ marginTop: '0.75rem' }}>
-            <div>{error}</div>
-            {fieldErrors.map((fe) => (
-              <div key={fe} className="field-err">{fe}</div>
-            ))}
-          </div>
-        )}
-      </section>
+        </div>
+      )}
 
       <section className="card">
         <div className="section-header">
-          <h2>Monitors ({monitors.length}/20)</h2>
-          <button type="button" className="btn-ghost" onClick={onRefresh}>
-            Refresh
-          </button>
+          <h2>Monitored sites <span className="mono muted">({monitors.length}/20)</span></h2>
+          <div className="toolbar">
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={refreshing}
+              onClick={handleRefreshClick}
+            >
+              {refreshing ? 'Syncing...' : 'Refresh'}
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => { setError(null); setFieldErrors([]); setShowCreate(true); }}
+            >
+              + Add site
+            </button>
+          </div>
         </div>
 
         {monitors.length === 0 ? (
-          <p className="muted">No monitors yet. Add one above to start checking.</p>
+          <div className="empty-state">
+            Nothing to show yet — add your first site to start monitoring.
+          </div>
         ) : (
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Status</th>
-                  <th>Name</th>
-                  <th>URL</th>
-                  <th>Interval</th>
+                  <th>State</th>
+                  <th>Site</th>
+                  <th>Recent checks</th>
                   <th>Latency</th>
-                  <th>Actions</th>
+                  <th>Every</th>
+                  <th style={{ textAlign: 'right' }}>Controls</th>
                 </tr>
               </thead>
               <tbody>
-                {monitors.map((m) => (
-                  <tr
-                    key={m.id}
-                    className={selectedId === m.id ? 'row-selected' : undefined}
-                  >
-                    <td>{statusBadge(m)}</td>
-                    <td className="fw-600">{m.name}</td>
-                    <td className="mono">{m.url}</td>
-                    <td>{m.intervalMinutes}m</td>
-                    <td>{m.lastResponseMs != null ? `${m.lastResponseMs} ms` : '—'}</td>
-                    <td className="actions">
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        onClick={() => onSelect(m.id)}
-                      >
-                        Details
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        disabled={busyId === m.id}
-                        onClick={() => handleToggle(m)}
-                      >
-                        {m.enabled ? 'Pause' : 'Resume'}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-danger"
-                        disabled={busyId === m.id}
-                        onClick={() => handleDelete(m.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {monitors.map((m) => {
+                  const history = [...(recentByMonitor[m.id] ?? [])].slice(0, 20).reverse();
+                  const emptySlots = Math.max(0, 20 - history.length);
+
+                  return (
+                    <tr
+                      key={m.id}
+                      className="clickable"
+                      onClick={() => onSelect(m.id)}
+                    >
+                      <td>{statusBadge(m)}</td>
+                      <td>
+                        <div className="fw-600">{m.name}</div>
+                        <div className="mono muted" style={{ fontSize: '0.76rem' }}>{m.url}</div>
+                      </td>
+                      <td>
+                        <div className="timeline-strip" title="Last 20 checks (oldest → newest)">
+                          {Array.from({ length: emptySlots }).map((_, idx) => (
+                            <div key={`e-${idx}`} className="tl-cell tl-empty" />
+                          ))}
+                          {history.map((r) => (
+                            <div
+                              key={r.id}
+                              className={`tl-cell ${r.success ? 'tl-up' : 'tl-down'}`}
+                              title={`${r.success ? 'UP' : 'DOWN'} · HTTP ${r.statusCode ?? '—'} · ${r.latencyMs ?? 0} ms · ${new Date(r.checkedAt).toLocaleTimeString()}`}
+                            />
+                          ))}
+                        </div>
+                      </td>
+                      <td className="mono">
+                        {m.lastResponseMs != null ? `${m.lastResponseMs} ms` : '—'}
+                      </td>
+                      <td className="mono muted">{m.intervalMinutes}m</td>
+                      <td className="actions" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => onSelect(m.id)}
+                        >
+                          Inspect
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          disabled={busyId === m.id}
+                          onClick={() => handleToggle(m)}
+                        >
+                          {m.enabled ? 'Pause' : 'Resume'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-danger"
+                          disabled={busyId === m.id}
+                          onClick={() => handleDelete(m.id)}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </section>
-    </div>
+    </>
   );
 }
