@@ -503,6 +503,47 @@ tbody tr:last-child td {
   100% { transform: scale(3.4); opacity: 0; }
 }
 
+/* Interactive 3D Globe */
+.globe-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+@media (max-width: 760px) {
+  .globe-layout { grid-template-columns: 1fr; }
+}
+
+.globe-canvas-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.globe-svg {
+  width: 280px;
+  height: 280px;
+  touch-action: none;
+  user-select: none;
+}
+
+.globe-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.globe-readout {
+  padding: 0.85rem 1rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-height: 68px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
 /* Status badges + ONE deliberate motion moment on DOWN / flip */
 .badge {
   display: inline-flex;
@@ -554,14 +595,14 @@ tbody tr:last-child td {
 .timeline-strip {
   display: flex;
   align-items: center;
-  gap: 3px;
-  height: 20px;
+  gap: 2px;
+  height: 16px;
   min-width: 132px;
 }
 
 .timeline-strip.tall {
-  height: 32px;
-  gap: 4px;
+  height: 26px;
+  gap: 3px;
 }
 
 .tl-cell {
@@ -570,11 +611,13 @@ tbody tr:last-child td {
   min-width: 4px;
   max-width: 10px;
   border-radius: 2px;
+  transition: opacity 120ms ease;
 }
 
-.tl-up { background: var(--up); opacity: 0.9; }
-.tl-down { background: var(--down); }
-.tl-empty { background: var(--surface-2); }
+.tl-up { background: rgba(34, 197, 94, 0.72); }
+.tl-down { background: rgba(239, 68, 68, 0.85); }
+.tl-empty { background: #161b26; }
+.tl-dim { opacity: 0.35; }
 
 /* Detail view */
 .viz-grid {

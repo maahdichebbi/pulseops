@@ -13,6 +13,8 @@ interface MonitorDetailProps {
 }
 
 function LatencySparkline({ results }: { results: CheckResult[] }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
   const points = [...results]
     .reverse()
     .filter((r): r is CheckResult & { latencyMs: number } => r.latencyMs != null);
@@ -25,37 +27,137 @@ function LatencySparkline({ results }: { results: CheckResult[] }) {
     );
   }
 
-  const width = 420;
-  const height = 74;
-  const pad = 6;
+  const width = 440;
+  const height = 104;
+  const padX = 8;
+  const padTop = 10;
+  const padBottom = 10;
+
   const values = points.map((p) => p.latencyMs);
   const min = Math.min(...values);
   const max = Math.max(...values);
+  const avg = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
   const range = Math.max(max - min, 1);
 
   const coords = points.map((p, idx) => {
-    const x = pad + (idx / (points.length - 1)) * (width - pad * 2);
-    const y = height - pad - ((p.latencyMs - min) / range) * (height - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
+    const x = padX + (idx / (points.length - 1)) * (width - padX * 2);
+    const y =
+      height -
+      padBottom -
+      ((p.latencyMs - min) / range) * (height - padTop - padBottom);
+    return { x, y, point: p };
   });
 
-  const avg = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+  const avgY =
+    height -
+    padBottom -
+    ((avg - min) / range) * (height - padTop - padBottom);
+
+  const linePoints = coords
+    .map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`)
+    .join(' ');
+  const areaPoints = `${padX},${height - padBottom} ${linePoints} ${width - padX},${height - padBottom}`;
+
+  const active = hoverIdx != null ? coords[hoverIdx] : null;
 
   return (
-    <div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="sparkline-svg" preserveAspectRatio="none">
+    <div className="stack" style={{ gap: '0.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <h3 style={{ margin: 0 }}>Latency history</h3>
+        <span className="mono" style={{ fontSize: '0.78rem' }}>
+          {active ? (
+            <>
+              <strong>{active.point.latencyMs} ms</strong>{' '}
+              <span className="muted">
+                · {new Date(active.point.checkedAt).toLocaleTimeString()}
+              </span>
+            </>
+          ) : (
+            <span className="muted">avg {avg} ms</span>
+          )}
+        </span>
+      </div>
+
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="sparkline-svg"
+        style={{ height: '104px' }}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
+        <defs>
+          <linearGradient id="latFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#eef1f6" stopOpacity="0.16" />
+            <stop offset="100%" stopColor="#eef1f6" stopOpacity="0.0" />
+          </linearGradient>
+        </defs>
+
+        {/* Top / bottom bounds and average baseline */}
+        <line x1={padX} y1={padTop} x2={width - padX} y2={padTop} stroke="#1a202e" strokeWidth="0.7" />
+        <line
+          x1={padX}
+          y1={avgY}
+          x2={width - padX}
+          y2={avgY}
+          stroke="#2a3347"
+          strokeWidth="0.8"
+          strokeDasharray="3 3"
+        />
+        <line x1={padX} y1={height - padBottom} x2={width - padX} y2={height - padBottom} stroke="#1a202e" strokeWidth="0.7" />
+
+        <polygon points={areaPoints} fill="url(#latFill)" />
         <polyline
           fill="none"
-          stroke="#eef1f6"
-          strokeWidth="1.8"
+          stroke="#cbd5e1"
+          strokeWidth="1.6"
           strokeLinecap="round"
           strokeLinejoin="round"
-          points={coords.join(' ')}
+          points={linePoints}
         />
+
+        {/* Crosshair + highlighted point on hover */}
+        {active && (
+          <g>
+            <line
+              x1={active.x}
+              y1={padTop}
+              x2={active.x}
+              y2={height - padBottom}
+              stroke="#3b465e"
+              strokeWidth="1"
+              strokeDasharray="2 2"
+            />
+            <circle
+              cx={active.x}
+              cy={active.y}
+              r="3.8"
+              fill={active.point.success ? '#22c55e' : '#ef4444'}
+              stroke="#090b0f"
+              strokeWidth="1.5"
+            />
+          </g>
+        )}
+
+        {/* Invisible wide hit columns for smooth hover */}
+        {coords.map((c, idx) => {
+          const colW = (width - padX * 2) / coords.length;
+          return (
+            <rect
+              key={c.point.id}
+              x={c.x - colW / 2}
+              y={0}
+              width={colW}
+              height={height}
+              fill="transparent"
+              style={{ cursor: 'crosshair' }}
+              onMouseEnter={() => setHoverIdx(idx)}
+            />
+          );
+        })}
       </svg>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem' }} className="muted mono">
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }} className="muted mono">
         <span>min {min} ms</span>
-        <span>avg {avg} ms</span>
+        <span>{points.length} samples</span>
         <span>max {max} ms</span>
       </div>
     </div>
@@ -170,6 +272,7 @@ export function MonitorDetail({ monitor, onBack, onRefresh }: MonitorDetailProps
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [hoveredCheck, setHoveredCheck] = useState<CheckResult | null>(null);
 
   async function loadDetail(showSpinner: boolean) {
     if (showSpinner) setLoading(true);
@@ -272,26 +375,50 @@ export function MonitorDetail({ monitor, onBack, onRefresh }: MonitorDetailProps
 
           <div className="viz-grid">
             <div className="viz-box">
-              <h3 style={{ margin: 0 }}>Check timeline ({bars.length} recorded)</h3>
-              <div className="timeline-strip tall">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <h3 style={{ margin: 0 }}>Check timeline ({bars.length})</h3>
+                <span className="mono" style={{ fontSize: '0.76rem' }}>
+                  {hoveredCheck ? (
+                    <>
+                      <span style={{ color: hoveredCheck.success ? 'var(--up)' : 'var(--down)' }}>
+                        {hoveredCheck.success ? 'UP' : 'DOWN'}
+                      </span>{' '}
+                      <span className="muted">
+                        {hoveredCheck.statusCode ?? '—'} · {hoveredCheck.latencyMs ?? 0} ms ·{' '}
+                        {new Date(hoveredCheck.checkedAt).toLocaleTimeString()}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="muted">Last {bars.length} checks</span>
+                  )}
+                </span>
+              </div>
+
+              <div
+                className="timeline-strip tall"
+                onMouseLeave={() => setHoveredCheck(null)}
+              >
                 {Array.from({ length: Math.max(0, 30 - bars.length) }).map((_, idx) => (
-                  <div key={`empty-${idx}`} className="tl-cell tl-empty" title="No check yet" />
+                  <div key={`empty-${idx}`} className="tl-cell tl-empty" />
                 ))}
                 {bars.map((r) => (
                   <div
                     key={r.id}
-                    className={`tl-cell ${r.success ? 'tl-up' : 'tl-down'}`}
-                    title={`${r.success ? 'UP' : 'DOWN'} · HTTP ${r.statusCode ?? '—'} · ${r.latencyMs ?? 0} ms · ${new Date(r.checkedAt).toLocaleString()}`}
+                    className={`tl-cell ${r.success ? 'tl-up' : 'tl-down'} ${
+                      hoveredCheck && hoveredCheck.id !== r.id ? 'tl-dim' : ''
+                    }`}
+                    onMouseEnter={() => setHoveredCheck(r)}
                   />
                 ))}
               </div>
-              <span className="muted" style={{ fontSize: '0.76rem' }}>
-                Oldest on left, latest on right. Hover a bar to inspect that check.
-              </span>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }} className="muted mono">
+                <span>{bars.length > 0 ? new Date(bars[0].checkedAt).toLocaleTimeString() : '—'}</span>
+                <span>{bars.length > 0 ? new Date(bars[bars.length - 1].checkedAt).toLocaleTimeString() : '—'}</span>
+              </div>
             </div>
 
             <div className="viz-box">
-              <h3 style={{ margin: 0 }}>Latency history</h3>
               <LatencySparkline results={results} />
             </div>
           </div>

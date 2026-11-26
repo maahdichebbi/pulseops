@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { authApi, clearToken, getToken, incidentsApi, monitorsApi } from './api/client';
 import type { CheckResult, Incident, Monitor, UserProfile } from './api/types';
 import { AuthForm } from './components/AuthForm';
+import { GlobalGlobe } from './components/GlobalGlobe';
 import { MonitorDashboard } from './components/MonitorDashboard';
 import { MonitorDetail } from './components/MonitorDetail';
 import './App.css';
@@ -170,6 +171,10 @@ export function App() {
               onSelect={setSelectedId}
               onRefresh={loadData}
             />
+
+            {monitors.length > 0 && (
+              <GlobalGlobe monitors={monitors} onSelect={setSelectedId} />
+            )}
           </>
         ) : (
           <section className="card">
