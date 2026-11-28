@@ -29,6 +29,9 @@ FROM eclipse-temurin:21-jre
 
 WORKDIR /app
 
+# Install curl for Docker healthchecks (minimal JRE image omits it)
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 # Create a non-root Linux user called 'pulseops'.
 # If the container is ever compromised, the attacker has no root privileges.
 RUN groupadd --system pulseops && useradd --system --gid pulseops pulseops

@@ -22,3 +22,6 @@ Thumbs.db
 
 # Test reports
 **/surefire-reports/
+
+# Frontend — built by its own Dockerfile, not needed in the backend image
+frontend/

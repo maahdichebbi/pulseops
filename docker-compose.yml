@@ -24,6 +24,15 @@ services:
       - "1025:1025"   # SMTP
       - "8026:8025"   # Web UI  →  http://localhost:8026  (8025 used by another project)
     restart: unless-stopped
+  web:
+    build: ./frontend
+    container_name: pulseops-web
+    ports:
+      - "3001:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped      
 
   api:
     build: .
