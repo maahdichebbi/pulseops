@@ -1,32 +1,29 @@
-name: CI
+name: CI/CD
 
 # Run on every push to any branch, and on every pull request targeting main.
-# This catches broken builds before they reach main.
+# Feature branches & PRs run tests + frontend + docker build checks.
+# Pushes to main also publish images to Docker Hub and deploy to the Azure VM.
 on:
   push:
   pull_request:
     branches: [ main ]
 
 jobs:
-  build-and-test:
-    name: Build & Test
+  # ── 1. Backend tests (unit + Testcontainers Postgres) ─────────────────────
+  backend-test:
+    name: Backend Test
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Check out the repository code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Install Java 21 (Temurin = Eclipse Adoptium — same JDK used locally)
       - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
 
-      # 3. Cache the Maven local repository (~/.m2).
-      #    On repeat runs, dependencies are restored from cache instead of
-      #    re-downloaded from Maven Central — saves ~2 min per run.
       - name: Cache Maven packages
         uses: actions/cache@v4
         with:
@@ -35,16 +32,82 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      # 4. Ensure Maven wrapper has execution permissions on Linux
       - name: Make Maven wrapper executable
         run: chmod +x ./mvnw
 
-      # 5. Run the full build + test suite.
-      #    'verify' = compile + test + integration-test.
-      #    Testcontainers will start a real Postgres Docker container automatically
-      #    (Docker is available on GitHub Actions ubuntu runners).
-      #    JWT_SECRET is provided as an env var — the app refuses to start without it.
-      - name: Build and test
+      - name: Build and verify
         run: ./mvnw verify
         env:
           JWT_SECRET: ci-test-secret-32-bytes-minimum!!
+
+  # ── 2. Frontend lint + TypeScript + Vite production build ─────────────────
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build bundle
+        run: npm run build
+
+  # ── 3. Build & (on main) push Docker images to Docker Hub ─────────────────
+  docker:
+    name: Docker Build & Push
+    needs: [ backend-test, frontend-build ]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME || 'pulseops' }}/pulseops-api:latest
+            ${{ secrets.DOCKERHUB_USERNAME || 'pulseops' }}/pulseops-api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME || 'pulseops' }}/pulseops-web:latest
+            ${{ secrets.DOCKERHUB_USERNAME || 'pulseops' }}/pulseops-web:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
